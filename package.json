@@ -1,12 +1,12 @@
 {
-  "name": "Lizamwol-MD",
+  "name": "LizamwolMD",
   "version": "3.0.0",
   "description": "A WhatsApp Bot Created By Mudiyan",
   "main": "index.js",
   "scripts": {
-    "start": "pm2 start index.js --deep-monitoring --attach --name Lizamwol-MD",
-    "stop": "pm2 stop Lizamwol-MD",
-    "restart": "pm2 restart Lizamwol-MD"
+    "start": "pm2 start index.js --deep-monitoring --attach --name LizamwolMD",
+    "stop": "pm2 stop LizamwolMD",
+    "restart": "pm2 restart LizamwolMD"
   },
   "dependencies": {
     "@whiskeysockets/baileys": "6.6.0",
