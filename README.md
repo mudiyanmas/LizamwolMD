@@ -103,7 +103,7 @@ jobs:
 - Creater and Owner Of LIZAMWOL-MD
 
 > LIZAMWOL-MD Helper
-- [Malvin King](https://github.com/mudiyanmas)
+- [MUDIYANMASS](https://github.com/mudiyanmas)
 - For helping in bot plugin files.
 ---
 <a><img src='https://i.imgur.com/LyHic3i.gif'/>
