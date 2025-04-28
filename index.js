@@ -47,12 +47,26 @@ const ownerNumber = ['918137829228']
 
 //===================SESSION-AUTH============================
 if (!fs.existsSync(__dirname + '/sessions/creds.json')) {
-if(!config.SESSION_ID) return console.log('Please add your session to SESSION_ID env !!')
-const sessdata = config.SESSION_ID.replace("LIZAMWOL-MD~", '');
-const filer = File.fromURL(`https://mega.nz/file#${sessdata}`)
-filer.download((err, data) => {
-if(err) throw err
-fs.writeFile(__dirname + '/sessions/creds.json', data, () => {
+  if (!config.SESSION_ID) {
+    return console.log('Please add your session to SESSION_ID env !!');
+  }
+
+  const sessdata = config.SESSION_ID.replace("LIZAMWOL-MD~", '');
+  const filer = File.fromURL(`https://mega.nz/file/${sessdata}`);
+
+  filer.download(async (err, data) => {
+    if (err) {
+      return console.error('Download failed:', err.message);
+    }
+
+    try {
+      fs.writeFileSync(__dirname + '/sessions/creds.json', data);
+      console.log('Successfully downloaded session file.');
+    } catch (writeErr) {
+      console.error('Error writing file:', writeErr.message);
+    }
+  });
+}
 console.log("SESSION DOWNLOADED COMPLETED ✅")
 })})}
 
