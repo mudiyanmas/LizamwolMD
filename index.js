@@ -3,76 +3,88 @@
  * Licensed under the GPL-3.0 License;
  * You may not sell this script.
  * It is supplied in the hope that it may be useful.
- * @project_name: Free Bot script
+ * @project_name: LIZAMWOL-MD
  * @author: Malvin King <https://github.com/kingmalvn>
- * @description: A Multi-functional whatsapp bot script.
+ * @description: Advanced WhatsApp Bot
  * @version: 3.0.0
  **/
 
+//===================REQUIRED DEPENDENCIES=======================
 const {
     default: makeWASocket,
     useMultiFileAuthState,
     DisconnectReason,
-    jidNormalizedUser,
-    getContentType,
     fetchLatestBaileysVersion,
     Browsers
 } = require('@whiskeysockets/baileys');
-
-const l = console.log;
-const { getBuffer, getGroupAdmins, getRandom, h2k, isUrl, Json, runtime, sleep, fetchJson } = require('./lib/functions');
 const fs = require('fs');
-const ff = require('fluent-ffmpeg');
-const P = require('pino');
-const config = require('./config');
-const qrcode = require('qrcode-terminal');
-const { sms, downloadMediaMessage } = require('./lib/msg');
+const path = require('path');
 const axios = require('axios');
 const { File } = require('megajs');
-const { tmpdir } = require('os');
-const path = require('path');
 const express = require("express");
+const P = require('pino');
+
+//===================CONFIGURATION CONSTANTS=======================
+const config = require('./config');
 const app = express();
 const prefix = config.PREFIX;
 const ownerNumber = ['918137829228'];
-
-//===================SESSION-AUTH============================
 const sessionsDir = path.join(__dirname, 'sessions');
+
+//===================EMOJI CONFIGURATION=======================
+const EMOJIS = {
+    STATUS: {
+        ONLINE: "🟢",
+        OFFLINE: "🔴",
+        TYPING: "✍️"
+    },
+    CONNECTION: {
+        START: "🧬",
+        SUCCESS: "✅",
+        PLUGINS: "🪄",
+        RECONNECT: "♻️"
+    },
+    REACTIONS: {
+        GENERAL: ["😊", "👍", "😂", "💯", "🔥", "🙏", "🎉", "👏", "😎", "🤖"],
+        HEARTS: ["❤️", "💝", "💖", "💗", "💓", "💞", "💕"],
+        NATURE: ["🌿", "🌸", "🌺", "🌻", "🌹"],
+        OWNER: ["👑", "💎", "🎖️", "🌟", "💌"]
+    }
+};
+
+//===================SESSION SETUP=======================
 if (!fs.existsSync(sessionsDir)) {
     fs.mkdirSync(sessionsDir, { recursive: true });
 }
 
 if (!fs.existsSync(path.join(sessionsDir, 'creds.json'))) {
     if (!config.SESSION_ID) {
-        console.log('Please add your session to SESSION_ID env !!');
+        console.log(`${EMOJIS.STATUS.OFFLINE} Please add SESSION_ID in config!`);
         process.exit(1);
     }
 
-    const sessdata = config.SESSION_ID.replace("LIZAMWOL-MD~", '');
-    const filer = File.fromURL(`https://mega.nz/file/${sessdata}`);
-
-    filer.download(async (err, data) => {
-        if (err) {
-            console.error('Download failed:', err.message);
-            process.exit(1);
-        }
-
-        try {
+    try {
+        const sessdata = config.SESSION_ID.replace("LIZAMWOL-MD~", '');
+        const filer = File.fromURL(`https://mega.nz/file/${sessdata}`);
+        
+        filer.download(async (err, data) => {
+            if (err) throw err;
+            
             fs.writeFileSync(path.join(sessionsDir, 'creds.json'), data);
-            console.log('Session file downloaded successfully ✅');
-            setTimeout(connectToWA, 3000); // Wait for file system to stabilize
-        } catch (writeErr) {
-            console.error('Error writing file:', writeErr.message);
-            process.exit(1);
-        }
-    });
+            console.log(`${EMOJIS.CONNECTION.SUCCESS} Session downloaded!`);
+            setTimeout(connectToWA, 3000);
+        });
+    } catch (error) {
+        console.error(`${EMOJIS.STATUS.OFFLINE} Session error:`, error.message);
+        process.exit(1);
+    }
 } else {
     connectToWA();
 }
 
-//===================WHATSAPP CONNECTION=======================
+//===================WHATSAPP CONNECTION MANAGER=======================
 async function connectToWA() {
-    console.log("Connecting LIZAMWOL-MD 🧬...");
+    console.log(`${EMOJIS.CONNECTION.START} Initializing connection...`);
     
     try {
         const { state, saveCreds } = await useMultiFileAuthState(sessionsDir);
@@ -82,73 +94,93 @@ async function connectToWA() {
             logger: P({ level: 'silent' }),
             printQRInTerminal: false,
             browser: Browsers.macOS("Firefox"),
-            syncFullHistory: true,
             auth: state,
             version
         });
 
+        // Connection Event Handler
         conn.ev.on('connection.update', (update) => {
-            const { connection, lastDisconnect } = update;
+            if (update.connection === 'open') {
+                console.log(`${EMOJIS.CONNECTION.SUCCESS} Connected successfully!`);
+                loadPlugins();
+                sendWelcomeMessage(conn);
+            }
             
-            if (connection === 'close') {
-                if (lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut) {
-                    console.log('Reconnecting...');
+            if (update.connection === 'close') {
+                if (update.lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut) {
+                    console.log(`${EMOJIS.CONNECTION.RECONNECT} Reconnecting...`);
                     setTimeout(connectToWA, 5000);
                 }
-            } else if (connection === 'open') {
-                console.log('♻️ Installing plugin files...');
-                loadPlugins();
-                console.log('LIZAMWOL-MD connected successfully ✅');
-                
-                const welcomeMsg = `*╭──────────────●●►*
-> *➺ LIZAMWOL-MD connected successfully*
-> *❁ Join our WhatsApp channel for updates:*
-> *${config.CHANNEL_LINK}*
-> *Your bot is now active! Enjoy! ♥️🪄*
-> *Prefix: ${prefix}*
-*╰──────────────●●►*`;
+            }
+        });
 
-                conn.sendMessage(conn.user.id, { 
-                    image: { url: config.MENU_IMG },
-                    caption: welcomeMsg
+        // Credentials Update Handler
+        conn.ev.on('creds.update', saveCreds);
+
+        // Message Reaction System
+        conn.ev.on('messages.upsert', async ({ messages }) => {
+            const msg = messages[0];
+            if (!msg.message || msg.key.fromMe) return;
+
+            // Auto-reaction System
+            if (config.AUTO_REACT) {
+                const allEmojis = [
+                    ...EMOJIS.REACTIONS.GENERAL,
+                    ...EMOJIS.REACTIONS.HEARTS,
+                    ...EMOJIS.REACTIONS.NATURE
+                ];
+                
+                const reactEmoji = msg.key.participant && ownerNumber.includes(msg.key.participant.split('@')[0])
+                    ? EMOJIS.REACTIONS.OWNER[Math.floor(Math.random() * EMOJIS.REACTIONS.OWNER.length)]
+                    : allEmojis[Math.floor(Math.random() * allEmojis.length)];
+
+                await conn.sendMessage(msg.key.remoteJid, {
+                    react: {
+                        text: reactEmoji,
+                        key: msg.key
+                    }
                 });
             }
         });
 
-        conn.ev.on('creds.update', saveCreds);
-
-        //===================MESSAGE HANDLING=======================
-        conn.ev.on('messages.upsert', async ({ messages }) => {
-            const mek = messages[0];
-            if (!mek.message) return;
-
-            // Message processing logic here
-            // ... (keep your existing message handling logic)
-        });
-
     } catch (error) {
-        console.error('Connection error:', error);
+        console.error(`${EMOJIS.STATUS.OFFLINE} Connection error:`, error.message);
         setTimeout(connectToWA, 10000);
     }
 }
 
 //===================PLUGIN LOADER=======================
 function loadPlugins() {
-    const pluginPath = path.join(__dirname, 'plugins');
-    fs.readdirSync(pluginPath).forEach(file => {
+    console.log(`${EMOJIS.CONNECTION.PLUGINS} Loading plugins...`);
+    const pluginDir = path.join(__dirname, 'plugins');
+    
+    fs.readdirSync(pluginDir).forEach(file => {
         if (path.extname(file).toLowerCase() === '.js') {
-            require(path.join(pluginPath, file));
-            console.log(`Loaded plugin: ${file}`);
+            require(path.join(pluginDir, file));
+            console.log(`${EMOJIS.CONNECTION.SUCCESS} Loaded: ${file}`);
         }
     });
 }
 
-//===================EXPRESS SERVER=======================
-const port = process.env.PORT || 9090;
-app.get("/", (req, res) => {
-    res.send("LIZAMWOL-MD is running ✅");
-});
+//===================WELCOME MESSAGE=======================
+function sendWelcomeMessage(conn) {
+    const welcomeMsg = `*╭──────────────●●►*
+${EMOJIS.REACTIONS.HEARTS[3]} *LIZAMWOL-MD Activated* ${EMOJIS.REACTIONS.HEARTS[3]}
+${EMOJIS.STATUS.ONLINE} Status: Operational
+${EMOJIS.REACTIONS.NATURE[0]} Prefix: ${prefix}
+${EMOJIS.REACTIONS.GENERAL[8]} Version: 3.0.0
 
-app.listen(port, () => {
-    console.log(`Server running on port ${port}`);
-});
+${EMOJIS.REACTIONS.GENERAL[5]} *Official Channel:*
+${config.CHANNEL_LINK}
+*╰──────────────●●►*`;
+
+    conn.sendMessage(conn.user.id, {
+        image: { url: config.MENU_IMG },
+        caption: welcomeMsg
+    });
+}
+
+//===================SERVER SETUP=======================
+const port = process.env.PORT || 9090;
+app.get("/", (req, res) => res.send(`${EMOJIS.STATUS.ONLINE} Bot Active`));
+app.listen(port, () => console.log(`Server running on port ${port}`));
