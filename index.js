@@ -3566,10 +3566,3 @@ return mk.sendMessage(m.chat, {text: util.format(e)}, {quoted: m})
 }}
 
 }}
-let file = require.resolve(__filename) 
-fs.watchFile(file, () => {
-fs.unwatchFile(file)
-console.log(chalk.redBright(`Update ${__filename}`))
-delete require.cache[file]
-require(file)
-})
