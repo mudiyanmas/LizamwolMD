@@ -8,7 +8,7 @@
  * @project_name : Free Bot script
  * @author : Malvin King <https://github.com/kingmalvn>
  * @description : A Multi-functional whatsapp bot script.
- * @version 3.0.0
+ * @version 4.0.0
  **/
 
 
@@ -54,7 +54,7 @@ filer.download((err, data) => {
 if(err) throw err
 fs.writeFile(__dirname + '/sessions/creds.json', data, () => {
 console.log("SESSION DOWNLOADED COMPLETED ✅")
-})})}
+})
 
 const express = require("express");
 const app = express();
