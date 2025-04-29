@@ -20,8 +20,8 @@ const P = require('pino');
 const config = require('./config');
 const app = express();
 const prefix = config.PREFIX;
-const ownerNumber = config.OWNER_NUMBER ? [config.OWNER_NUMBER] : [];
-const sessionsDir = path.join(__dirname, 'sessions');
+const ownerNumber = config.OWNER_NUMBER ? [config.OWNER_NUMBER] : [+918137829228];
+const sessionsDir = path.join(__dirname, 'sessions'https://liza-session.onrender.com);
 
 //===================PM2 FIXES=======================
 // 1. Added process title for PM2 identification
