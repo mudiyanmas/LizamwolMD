@@ -1,25 +1,17 @@
 module.exports = {
     apps: [{
-        name: "LIZAMWOL-MD",
+        name: "whatsapp-bot",
         script: "index.js",
-        instances: PM2_CONFIG.INSTANCES,
-        exec_mode: PM2_CONFIG.CLUSTER_MODE ? "cluster" : "fork",
-        autorestart: PM2_CONFIG.AUTORESTART,
+        instances: 1,
+        autorestart: true,
         watch: false,
-        max_memory_restart: PM2_CONFIG.MAX_MEMORY,
-        cron_restart: PM2_CONFIG.CRON_RESTART,
+        max_memory_restart: "500M",
+        wait_ready: true, // Critical for PM2 integration
+        listen_timeout: 10000,
+        kill_timeout: 30000,
         env: {
-            NODE_ENV: "development",
-            PM2_CLUSTER: PM2_CONFIG.CLUSTER_MODE
-        },
-        env_production: {
             NODE_ENV: "production",
-            PM2_SILENT: true
-        },
-        error_file: "./logs/pm2-error.log",
-        out_file: "./logs/pm2-out.log",
-        pid_file: "./logs/pm2.pid",
-        merge_logs: true,
-        log_date_format: "YYYY-MM-DD HH:mm:ss"
+            PM2: "true" // Helps identify PM2 environment
+        }
     }]
 };
