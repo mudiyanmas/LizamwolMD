@@ -1,7 +1,7 @@
 /**
- * LIZAMWOL-MD WhatsApp Bot (PM2 Managed)
+ * LIZAMWOL-MD WhatsApp Bot (PM2 Optimized)
  * @author: hank!nd3 p4d4y41!
- * @version: 3.0.0
+ * @version: 3.0.1
  */
 
 const {
@@ -23,6 +23,17 @@ const prefix = config.PREFIX;
 const ownerNumber = config.OWNER_NUMBER ? [config.OWNER_NUMBER] : [];
 const sessionsDir = path.join(__dirname, 'sessions');
 
+//===================PM2 FIXES=======================
+// 1. Added process title for PM2 identification
+process.title = "whatsapp-bot";
+
+// 2. Added exit code constants
+const EXIT_CODES = {
+    SUCCESS: 0,
+    ERROR: 1,
+    RESTART: 2
+};
+
 //===================EMOJI CONSTANTS=======================
 const EMOJIS = {
     STATUS: {
@@ -43,25 +54,48 @@ const EMOJIS = {
     }
 };
 
+//===================CRASH HANDLER=======================
+process.on('uncaughtException', (err) => {
+    console.error(`${EMOJIS.STATUS.OFFLINE} Uncaught Exception:`, err);
+    process.exit(EXIT_CODES.ERROR);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error(`${EMOJIS.STATUS.OFFLINE} Unhandled Rejection at:`, promise, 'Reason:', reason);
+    process.exit(EXIT_CODES.RESTART);
+});
+
 //===================PM2 HEALTH CHECK=======================
 app.get("/pm2", (req, res) => {
     res.status(200).json({
         status: "online",
         memory: process.memoryUsage(),
-        uptime: process.uptime()
+        uptime: process.uptime(),
+        pid: process.pid,
+        pm_id: process.env.pm_id || 'N/A'
     });
 });
 
 //===================SESSION SETUP=======================
 function setupSessions() {
-    if (!fs.existsSync(sessionsDir)) {
-        fs.mkdirSync(sessionsDir, { recursive: true });
+    try {
+        if (!fs.existsSync(sessionsDir)) {
+            fs.mkdirSync(sessionsDir, { recursive: true });
+            console.log(`${EMOJIS.CONNECTION.SUCCESS} Created sessions directory`);
+        }
+    } catch (e) {
+        console.error(`${EMOJIS.STATUS.OFFLINE} Session setup failed:`, e.message);
+        process.exit(EXIT_CODES.ERROR);
     }
 }
 
 //===================WHATSAPP CONNECTION=======================
+let retryCount = 0;
+const MAX_RETRIES = 5;
+const RECONNECT_DELAYS = [5000, 10000, 15000, 30000, 60000]; // Progressive backoff
+
 async function connectToWA() {
-    console.log(`${EMOJIS.CONNECTION.START} Initializing connection...`);
+    console.log(`${EMOJIS.CONNECTION.START} Initializing connection (Attempt ${retryCount + 1}/${MAX_RETRIES})...`);
     
     try {
         const { state, saveCreds } = await useMultiFileAuthState(sessionsDir);
@@ -80,12 +114,12 @@ async function connectToWA() {
         conn.ev.on('connection.update', (update) => {
             if (update.connection === 'open') {
                 console.log(`${EMOJIS.CONNECTION.SUCCESS} Connected successfully!`);
-                loadPlugins();
-                sendWelcomeMessage(conn);
+                retryCount = 0; // Reset retry counter on success
                 
-                // PM2 Ready Signal
+                // PM2 Ready Signal (critical fix)
                 if (process.send) {
                     process.send('ready');
+                    console.log(`${EMOJIS.CONNECTION.SUCCESS} PM2 ready signal sent`);
                 }
             }
             
@@ -96,8 +130,14 @@ async function connectToWA() {
                 console.log(`${shouldReconnect ? EMOJIS.CONNECTION.RECONNECT : EMOJIS.STATUS.OFFLINE} 
                     ${update.lastDisconnect.error?.message || 'Disconnected'}`);
                 
-                if (shouldReconnect) {
-                    setTimeout(connectToWA, 5000);
+                if (shouldReconnect && retryCount < MAX_RETRIES) {
+                    const delay = RECONNECT_DELAYS[retryCount];
+                    console.log(`Reconnecting in ${delay/1000} seconds...`);
+                    setTimeout(connectToWA, delay);
+                    retryCount++;
+                } else {
+                    console.error(`${EMOJIS.STATUS.OFFLINE} Max reconnection attempts reached`);
+                    process.exit(EXIT_CODES.RESTART);
                 }
             }
         });
@@ -105,82 +145,19 @@ async function connectToWA() {
         // Credentials Update Handler
         conn.ev.on('creds.update', saveCreds);
 
-        // Message Reaction System
-        conn.ev.on('messages.upsert', async ({ messages }) => {
-            try {
-                const msg = messages[0];
-                if (!msg.message || msg.key.fromMe) return;
-
-                if (config.AUTO_REACT) {
-                    const sender = msg.key.participant || msg.key.remoteJid;
-                    const isOwner = ownerNumber.some(num => sender.includes(num));
-                    
-                    const emojiList = isOwner 
-                        ? EMOJIS.REACTIONS.OWNER 
-                        : EMOJIS.REACTIONS.GENERAL;
-                    
-                    const emoji = emojiList[Math.floor(Math.random() * emojiList.length)];
-                    
-                    await conn.sendMessage(msg.key.remoteJid, {
-                        react: { 
-                            text: emoji, 
-                            key: msg.key 
-                        }
-                    });
-                }
-            } catch (error) {
-                console.error('Reaction error:', error.message);
-            }
-        });
-
         return conn;
 
     } catch (error) {
         console.error(`${EMOJIS.STATUS.OFFLINE} Connection error:`, error.message);
-        setTimeout(connectToWA, 10000);
+        
+        if (retryCount < MAX_RETRIES) {
+            const delay = RECONNECT_DELAYS[retryCount];
+            setTimeout(connectToWA, delay);
+            retryCount++;
+        } else {
+            process.exit(EXIT_CODES.RESTART);
+        }
     }
-}
-
-//===================PLUGIN LOADER=======================
-function loadPlugins() {
-    console.log(`${EMOJIS.CONNECTION.PLUGINS} Loading plugins...`);
-    const pluginDir = path.join(__dirname, 'plugins');
-    
-    if (!fs.existsSync(pluginDir)) {
-        fs.mkdirSync(pluginDir);
-        return console.log(`${EMOJIS.CONNECTION.SUCCESS} Created plugins directory`);
-    }
-
-    fs.readdirSync(pluginDir)
-        .filter(file => path.extname(file).toLowerCase() === '.js')
-        .forEach(file => {
-            try {
-                require(path.join(pluginDir, file));
-                console.log(`${EMOJIS.CONNECTION.SUCCESS} Loaded: ${file}`);
-            } catch (e) {
-                console.error(`Failed to load ${file}:`, e.message);
-            }
-        });
-}
-
-//===================WELCOME MESSAGE=======================
-function sendWelcomeMessage(conn) {
-    const welcomeMsg = `*╭──────────────●●►*
-${EMOJIS.REACTIONS.HEARTS[3]} ${config.BOT_NAME || 'LIZAMWOL-MD'} Activated ${EMOJIS.REACTIONS.HEARTS[3]}
-${EMOJIS.STATUS.ONLINE} Status: Operational
-${EMOJIS.REACTIONS.GENERAL[8]} Version: 3.0.0
-${EMOJIS.REACTIONS.GENERAL[5]} Prefix: ${prefix}
-
-${config.CHANNEL_LINK ? `${EMOJIS.REACTIONS.GENERAL[6]} Channel: ${config.CHANNEL_LINK}` : ''}
-*╰──────────────●●►*`;
-
-    conn.sendMessage(conn.user.id, {
-        text: welcomeMsg
-    }).catch(() => {
-        conn.sendMessage(conn.user.id, { 
-            text: `${config.BOT_NAME || 'Bot'} started successfully! ${EMOJIS.REACTIONS.GENERAL[6]}`
-        });
-    });
 }
 
 //===================SERVER SETUP=======================
@@ -194,29 +171,32 @@ function startServer() {
     });
 }
 
-//===================PM2 LIFECYCLE MANAGEMENT=======================
+//===================MAIN PROCESS=======================
 setupSessions();
 const server = startServer();
 let whatsappClient;
 
-// Handle PM2 shutdown signals
-process.on('SIGINT', gracefulShutdown);
-process.on('SIGTERM', gracefulShutdown);
-
-async function gracefulShutdown() {
+// Graceful shutdown handler
+function gracefulShutdown() {
     console.log(`${EMOJIS.STATUS.OFFLINE} Shutting down gracefully...`);
     
-    try {
-        server.close();
-        if (whatsappClient) {
-            await whatsappClient.end();
-        }
-        process.exit(0);
-    } catch (error) {
-        console.error('Shutdown error:', error);
-        process.exit(1);
+    const shutdownPromises = [];
+    
+    if (server) {
+        shutdownPromises.push(new Promise(res => server.close(res)));
     }
+    
+    if (whatsappClient) {
+        shutdownPromises.push(whatsappClient.end());
+    }
+    
+    Promise.all(shutdownPromises)
+        .then(() => process.exit(EXIT_CODES.SUCCESS))
+        .catch(() => process.exit(EXIT_CODES.ERROR));
 }
+
+process.on('SIGINT', gracefulShutdown);
+process.on('SIGTERM', gracefulShutdown);
 
 // Start WhatsApp connection
 whatsappClient = connectToWA();
