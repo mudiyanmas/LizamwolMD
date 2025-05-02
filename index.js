@@ -9,34 +9,7 @@
  * - Baileys Library by @adiwajshing
  * - Pair Code implementation inspired by TechGod143 & DGXEON
  */
-require('./settings')
-const { Boom } = require('@hapi/boom')
-const fs = require('fs')
-const chalk = require('chalk')
-const FileType = require('file-type')
-const path = require('path')
-const axios = require('axios')
-const { handleMessages, handleGroupParticipantUpdate, handleStatus } = require('./main');
-const PhoneNumber = require('awesome-phonenumber')
-const { imageToWebp, videoToWebp, writeExifImg, writeExifVid } = require('./lib/exif')
-const { smsg, isUrl, generateMessageTag, getBuffer, getSizeMedia, fetch, await, sleep, reSize } = require('./lib/myfunc')
-const { 
-    default: makeWASocket,
-    useMultiFileAuthState, 
-    DisconnectReason, 
-    fetchLatestBaileysVersion,
-    generateForwardMessageContent,
-    prepareWAMessageMedia,
-    generateWAMessageFromContent,
-    generateMessageID,
-    downloadContentFromMessage,
-    makeInMemoryStore,
-    jidDecode,
-    proto,
-    jidNormalizedUser,
-    makeCacheableSignalKeyStore,
-    delay
-} = require("@whiskeysockets/baileys")
+require("@whiskeysockets/baileys")
 const NodeCache = require("node-cache")
 const pino = require("pino")
 const readline = require("readline")
